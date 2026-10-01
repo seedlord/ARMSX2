@@ -39,6 +39,17 @@ val armsx2MarchExtra = providers.gradleProperty("armsx2.marchExtra").orElse("")
 // DIAGNOSTIC ONLY (-Parmsx2.recTestHooks=true): compiles the EERecFallback opcode-group
 // interpreter bisect into the EE recompiler. Never set for a shipped build.
 val armsx2RecTestHooks = providers.gradleProperty("armsx2.recTestHooks").orElse("false")
+val armsx2Ccache = providers.gradleProperty("armsx2.ccache")
+    .map { it.toBoolean() }
+    .orElse(providers.systemProperty("CMAKE_C_COMPILER_LAUNCHER").map { it.isNotBlank() })
+    .orElse(providers.environmentVariable("USE_CCACHE").map { it == "1" || it.equals("true", ignoreCase = true) })
+    .orElse(false)
+val armsx2CCompilerLauncher = providers.systemProperty("CMAKE_C_COMPILER_LAUNCHER")
+    .orElse(providers.gradleProperty("armsx2.cCompilerLauncher"))
+    .orElse("ccache")
+val armsx2CxxCompilerLauncher = providers.systemProperty("CMAKE_CXX_COMPILER_LAUNCHER")
+    .orElse(providers.gradleProperty("armsx2.cxxCompilerLauncher"))
+    .orElse("ccache")
 val armsx2ApplicationId = providers.gradleProperty("armsx2.applicationId").orElse("com.armsx2")
 // Distribution channel, baked into BuildConfig so the app knows which release stream it belongs to
 // without guessing from the version string. "nightly" builds ship a distinct applicationId and
@@ -118,6 +129,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters.add("arm64-v8a")
+        }
+        if (armsx2Ccache.get()) {
+            externalNativeBuild {
+                cmake {
+                    arguments += "-DCMAKE_C_COMPILER_LAUNCHER=${armsx2CCompilerLauncher.get()}"
+                    arguments += "-DCMAKE_CXX_COMPILER_LAUNCHER=${armsx2CxxCompilerLauncher.get()}"
+                }
+            }
         }
     }
 

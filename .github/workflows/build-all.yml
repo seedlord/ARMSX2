@@ -110,6 +110,12 @@ jobs:
     runs-on: ubuntu-24.04
     # Non-blocking until the collapsed-core Android build first goes green.
     continue-on-error: true
+    env:
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_COMPRESS: true
+      CCACHE_COMPRESSLEVEL: 9
+      CCACHE_MAXSIZE: 500M
     defaults:
       run:
         working-directory: platforms/android
@@ -123,6 +129,27 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: false
+          cache-read-only: false
+
+      - name: Install ccache
+        run: sudo apt-get update && sudo apt-get install -y ccache
+
+      # -- SETUP CCACHE - https://cristianadam.eu/20200113/speeding-up-c-plus-plus-github-actions-using-ccache/
+      - name: Prepare ccache timestamp
+        id: ccache_cache_timestamp
+        run: echo "timestamp=$(date -u "+%Y-%m-%d-%H;%M;%S")" >> $GITHUB_OUTPUT
+
+      - name: ccache cache files
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ${{ runner.os }}-android-arm64-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
+          restore-keys: ${{ runner.os }}-android-arm64-ccache-
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -150,7 +177,13 @@ jobs:
         run: rustup target add aarch64-linux-android
 
       - name: Build release APK
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: |
+          ccache -z
+          ./gradlew :app:assembleRelease --stacktrace \
+            -Parmsx2.ccache=true \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ccache -s
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
